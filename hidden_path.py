@@ -54,8 +54,8 @@ def calculate_heuristics():
         heuristics[teleports[i][1]][teleports[i][0]] = heuristics[teleports[i + 1][1]][teleports[i + 1][0]]
 
 def output(strat, expanded, path, cost):
-    print(f"<{strat}> Search Initiated")
-    print(f"Expanded: {expanded}")
+    print(f"{strat} Search Initiated")
+    print(f"Expanded: {''.join(f'({x}, {y})' for x, y in expanded)}")
     if (not path):
         print("NO PATH FOUND!")
         return
@@ -68,29 +68,27 @@ def BFS():
 def UCS():
     pass
 
-def IDS():
+def IDS(limit):
     pass
 
 def Greedy():
     fringe = []
+    added = set()
     expanded = []
+    parents = {}
     heappush(fringe, (0, start))
+    added.add(start)
     finished = 0
-    cost = -1
     while fringe:
         x, y = heappop(fringe)[1]
         expanded.append((x, y))
-        cost += 1
         if grid[y][x] == 'X':
             finished = 1
             break
-        elif grid[y][x] == 'M':
-            cost += 1
-        elif grid[y][x] == 'B':
-            cost += 2
         elif grid[y][x].isnumeric() and ord(grid[y][x]) % 2 == 1:
-            cost -= 1
             teleport_exit = teleports[ord(grid[y][x]) - ord('0') + 1]
+            parents[teleport_exit] = (x, y)
+            added.add(teleport_exit)
             heappush(fringe, (0, teleport_exit))
             continue
         for dir in directions:
@@ -98,27 +96,179 @@ def Greedy():
             new_y = y + dir[1]
             if (new_x < 0 or new_x >= m or new_y < 0 or new_y >= n):
                 continue
-            if (new_x, new_y) in fringe or (new_x, new_y) in expanded:
+            if (new_x, new_y) in added:
                 continue
             # If the cell is a wall, skip it
             if grid[new_y][new_x] == 'W':
                 continue
+            parents[(new_x, new_y)] = (x, y)
+            added.add((new_x, new_y))
             heappush(fringe, (heuristics[new_y][new_x], (new_x, new_y)))
     if not finished:
-        output("Greedy", expanded, [], cost)
+        output("Greedy", expanded, [], 0)
         return
-    output("Greedy", expanded, expanded, cost)
+    # Reconstruct the path
+    path = []
+    current = expanded[-1]
+    cost = 0
+    while current in parents:
+        if grid[current[1]][current[0]] == 'M':
+            cost += 2
+        elif grid[current[1]][current[0]] == 'B':
+            cost += 3
+        elif grid[current[1]][current[0]].isnumeric() and ord(grid[current[1]][current[0]]) % 2 == 1:
+            cost += 0
+        else:
+            cost += 1
+        path.append(current)
+        current = parents[current]
+    path.append(start)
+    path.reverse()
+    output("Greedy", expanded, path, cost)
 
 
 
 def A_star():
-    pass
+    fringe = []
+    added = set()
+    expanded = []
+    parents = {}
+    path_cost = {start: 0}
+    heappush(fringe, (0, start))
+    added.add(start)
+    finished = 0
+    while fringe:
+        x, y = heappop(fringe)[1]
+        expanded.append((x, y))
+        if grid[y][x] == 'X':
+            finished = 1
+            break
+        elif grid[y][x].isnumeric() and ord(grid[y][x]) % 2 == 1:
+            teleport_exit = teleports[ord(grid[y][x]) - ord('0') + 1]
+            parents[teleport_exit] = (x, y)
+            path_cost[teleport_exit] = path_cost[(x, y)]
+            added.add(teleport_exit)
+            heappush(fringe, (0, teleport_exit))
+            continue
+        for dir in directions:
+            new_x = x + dir[0]
+            new_y = y + dir[1]
+            if (new_x < 0 or new_x >= m or new_y < 0 or new_y >= n):
+                continue
+            if (new_x, new_y) in added:
+                continue
+            # If the cell is a wall, skip it
+            if grid[new_y][new_x] == 'W':
+                continue
+            value = 1
+            if grid[new_y][new_x] == 'M':
+                value += 1
+            elif grid[new_y][new_x] == 'B':
+                value += 2
+            parents[(new_x, new_y)] = (x, y)
+            path_cost[(new_x, new_y)] = path_cost[(x, y)] + value
+            added.add((new_x, new_y))
+            heappush(fringe, (heuristics[new_y][new_x] + path_cost[(new_x, new_y)], (new_x, new_y)))
+    
+    if not finished:
+        output("A*", expanded, [], 0)
+        return
+    # Reconstruct the path
+    path = []
+    current = expanded[-1]
+    cost = 0
+    while current in parents:
+        if grid[current[1]][current[0]] == 'M':
+            cost += 2
+        elif grid[current[1]][current[0]] == 'B':
+            cost += 3
+        elif grid[current[1]][current[0]].isnumeric() and ord(grid[current[1]][current[0]]) % 2 == 1:
+            cost += 0
+        else:
+            cost += 1
+        path.append(current)
+        current = parents[current]
+    path.append(start)
+    path.reverse()
+    output("A*", expanded, path, cost)
 
-def Beam():
-    pass
+def Beam(width):
+    fringe = []
+    added = set()
+    expanded = []
+    parents = {}
+    heappush(fringe, (heuristics[start[1]][start[0]], start))
+    added.add(start)
+    finished = 0
+    prev_best = n + m
+    while not finished:
+        candidates = []
+        best = n + m
+        for i in range(width): 
+            if fringe:
+                candidates.append(heappop(fringe))
+                best = min(best, candidates[-1][0])
+        if (best >= prev_best):
+            break
+        prev_best = best
+        fringe = []
+        for candidate in candidates:
+            x, y = candidate[1]
+            expanded.append((x, y))
+            if grid[y][x] == 'X':
+                finished = 1
+                break
+
+            if grid[y][x].isnumeric() and ord(grid[y][x]) % 2 == 1:
+                '''
+                teleport_exit = teleports[ord(grid[y][x]) - ord('0') + 1]
+                if teleport_exit not in added:
+                    parents[teleport_exit] = (x, y)
+                    added.add(teleport_exit)
+                    heappush(fringe, (heuristics[teleport_exit[1]][teleport_exit[0]], teleport_exit))
+                '''
+                continue
+
+            for dir in directions:
+                new_x = x + dir[0]
+                new_y = y + dir[1]
+                if (new_x < 0 or new_x >= m or new_y < 0 or new_y >= n):
+                    continue
+                if (new_x, new_y) in added:
+                    continue
+                # If the cell is a wall, skip it
+                if grid[new_y][new_x] == 'W':
+                    continue
+                parents[(new_x, new_y)] = (x, y)
+                added.add((new_x, new_y))
+                heappush(fringe, (heuristics[new_y][new_x], (new_x, new_y)))
+        if not fringe:
+            break
+    
+    if not finished:
+        output("Beam", expanded, [], 0)
+        return
+    # Reconstruct the path
+    path = []
+    current = expanded[-1]
+    cost = 0
+    while current in parents:
+        if grid[current[1]][current[0]] == 'M':
+            cost += 2
+        elif grid[current[1]][current[0]] == 'B':
+            cost += 3
+        elif grid[current[1]][current[0]].isnumeric() and ord(grid[current[1]][current[0]]) % 2 == 1:
+            cost += 0
+        else:
+            cost += 1
+        path.append(current)
+        current = parents[current]
+    path.append(start)
+    path.reverse()
+    output("Beam", expanded, path, cost)
 
 
-def main(strategy, filename):
+def main(strategy, filename, param):
     read_input(filename)
     #print(grid)
     calculate_heuristics()
@@ -129,21 +279,23 @@ def main(strategy, filename):
         case "U":
             UCS()
         case "I":
-            IDS()
+            IDS(param)
         case "G":
             Greedy()
         case "A":
             A_star()
         case "M":
-            Beam()
+            Beam(param)
     return
 
 if __name__ == '__main__':   
     if len(sys.argv) < 3:
         # You can modify these values to test your code
-        strategy = 'G'
-        filename = 'example3.txt'
+        strategy = 'M'
+        filename = 'example5.txt'
+        param = "3"
     else:
         strategy = sys.argv[1]
         filename = sys.argv[2]
-    main(strategy, filename)
+        param = sys.argv[3] if len(sys.argv) > 3 else None
+    main(strategy, filename, int(param) if param else None)

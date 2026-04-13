@@ -4,7 +4,7 @@ from heapq import heappush, heappop
 global treasures
 global n, m, grid, start, heuristics, teleports
 global directions
-directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
 '''
 teleports is a dictionary that maps the teleport's entrance to its exit
@@ -63,13 +63,229 @@ def output(strat, expanded, path, cost):
     print(f"Taking this path will cost: {cost} Willpower")
 
 def BFS():
-    pass
+    fringe =[start]
+    expanded = []
+    visited = set([start])
+    goal_founded = False
+    parent = {}     #use dictionary to keep track each node's parent - trace back path from goal to start
+
+    while fringe:
+        cur = fringe.pop(0)
+        expanded.append(cur)
+
+        # Stop when expanded a goal tile "X"
+        if (grid[cur[1]][cur[0]] == "X"):
+            goal_founded = True
+            break
+        
+        # Handle special tiles: Portal
+        if (grid[cur[1]][cur[0]].isnumeric() and ord(grid[cur[1]][cur[0]]) % 2 == 1):
+            teleport_exit = teleports[ord(grid[cur[1]][cur[0]]) - ord('0') + 1]
+            parent[teleport_exit] = (cur[0], cur[1])
+            visited.add(teleport_exit)
+            fringe.append(teleport_exit)
+            continue
+
+        for d in directions:
+            # compute all possible next position in next move
+            new_x = cur[0] + d[0]
+            new_y = cur[1] + d[1]
+
+            # Ignore positions that are outside the given range mxn
+            if (new_x >= m or new_x < 0 or new_y >= n or new_y < 0):
+                continue 
+            
+            # Handle special tiles: Wall
+            if (grid[new_y][new_x] == "W"):
+                continue
+                
+            new_node = (new_x, new_y)
+            if new_node not in visited:
+                visited.add(new_node)
+                fringe.append(new_node)
+                parent[new_node] = cur  # Set parent-child relationship to cur-new_node
+    
+    # If no goal tiles founded, return message
+    if not goal_founded:
+        output("BFS", expanded, [], 0)
+
+    # Trace back from goal to start tile then print out the path
+    path = []
+    cost = 0
+    cur = expanded[-1]
+    while cur in parent.keys():
+        if grid[cur[1]][cur[0]] == 'M':
+            cost += 2
+        elif grid[cur[1]][cur[0]] == 'B':
+            cost += 3
+        elif grid[cur[1]][cur[0]].isnumeric() and ord(grid[cur[1]][cur[0]]) % 2 == 1:
+            cost += 0
+        else:
+            cost += 1
+        path.append(cur)
+        cur = parent[cur]
+    path.append(start)
+    path.reverse()
+    output("BFS", expanded, path, cost)
 
 def UCS():
-    pass
+    fringe = [(0, start)]
+    expanded = []
+    visited = set()
+    goal_founded = False
+    parent = {}
+    cost_so_far = {start: 0}    # Tracks the best known cost to each visited node
+
+    while fringe:
+        pop = heappop(fringe)
+        current_cost = pop[0]
+        current_node = pop[1]
+        x, y = current_node
+
+        # Skip already expanded nodes
+        if current_node in expanded:
+            continue
+
+        expanded.append(current_node)
+
+        # Stop when treasure tile is expanded
+        if grid[y][x] == "X":
+            goal_founded = True
+            break
+
+        # Handle teleport tiles - additional 1 cost to move on portal tile
+        elif grid[y][x].isnumeric() and ord(grid[y][x]) % 2 == 1:
+            teleport_exit = teleports[ord(grid[y][x]) - ord('0') + 1]
+            if teleport_exit not in expanded:
+                parent[teleport_exit] = (x, y)
+                cost_so_far[teleport_exit] = current_cost
+                heappush(fringe, (current_cost, teleport_exit))
+            continue
+
+        for d in directions:
+            new_x = x + d[0]
+            new_y = y + d[1]
+
+            if (new_x >= m or new_x < 0 or new_y >= n or new_y < 0):
+                continue
+            if grid[new_y][new_x] == "W":
+                continue
+
+            new_node = (new_x, new_y)
+            # # Compute the next movement cost based on tile types
+            if grid[new_y][new_x] == 'M':
+                total_cost = current_cost + 2
+            elif grid[new_y][new_x] == 'B':
+                total_cost = current_cost + 3
+            else:
+                total_cost = current_cost + 1
+
+            if new_node not in expanded and total_cost < cost_so_far.get(new_node, float('inf')):
+                cost_so_far[new_node] = total_cost
+                heappush(fringe, (total_cost, new_node))
+                parent[new_node] = current_node
+
+    if not goal_founded:
+        output("UCS", expanded, [], 0)
+        return
+
+    # Trace back from goal to start
+    path = []
+    cost = 0
+    cur = expanded[-1]
+    while cur in parent:
+        if grid[cur[1]][cur[0]] == 'M':
+            cost += 2
+        elif grid[cur[1]][cur[0]] == 'B':
+            cost += 3
+        elif grid[cur[1]][cur[0]].isnumeric() and ord(grid[cur[1]][cur[0]]) % 2 == 1:
+            cost += 0  # entrance costs 1 willpower to move onto
+        else:
+            cost += 1
+        path.append(cur)
+        cur = parent[cur]
+    path.append(start)
+    path.reverse()
+    output("UCS", expanded, path, cost)
 
 def IDS(limit):
-    pass
+    expanded = []
+    goal_founded = False
+
+    for l in range(limit+1):
+        fringe = [(start, 0)]
+        visited = set()
+        parent = {}
+
+        if goal_founded:
+            break
+
+        while fringe:
+            current_node, depth = fringe.pop(-1)   #we expand from the bottom to search for the depth first
+            x,y = current_node
+            
+            if depth > l:
+                continue
+
+            if current_node in visited:
+                continue
+
+            visited.add(current_node)
+            expanded.append(current_node)
+
+            # Stop when expanded a goal tile "X"
+            if (grid[y][x] == "X"):
+                goal_founded = True
+                break
+            
+            # Handle special tiles: Portal
+            if (grid[y][x].isnumeric() and ord(grid[y][x]) % 2 == 1):
+                teleport_exit = teleports[ord(grid[y][x]) - ord('0') + 1]
+                fringe.append((teleport_exit,depth+1))
+                parent[teleport_exit] = (x, y)
+                continue
+            
+            for r in reversed(directions):
+                # compute all possible next position in next move
+                new_x = x + r[0]
+                new_y = y + r[1]
+                
+                # Ignore positions that are outside the given range mxn
+                if (new_x >= m or new_x < 0 or new_y >= n or new_y < 0):
+                    continue 
+                
+                # Handle special tiles: Wall
+                if (grid[new_y][new_x] == "W"):
+                    continue
+                    
+                new_node = (new_x, new_y)
+                if new_node not in visited:
+                    fringe.append((new_node,depth+1))
+                    parent[new_node] = current_node 
+
+    if not goal_founded:
+        output("IDS", expanded, [], 0)
+        return
+
+    # Trace back from goal to start tile then print out the path
+    path = []
+    cost = 0
+    cur = expanded[-1]
+    while cur in parent.keys():
+        if grid[cur[1]][cur[0]] == 'M':
+            cost += 2
+        elif grid[cur[1]][cur[0]] == 'B':
+            cost += 3
+        elif grid[cur[1]][cur[0]].isnumeric() and ord(grid[cur[1]][cur[0]]) % 2 == 1:
+            cost += 0
+        else:
+            cost += 1
+        path.append(cur)
+        cur = parent[cur]
+    path.append(start)
+    path.reverse()
+
+    output("IDS", expanded, path, cost)
 
 def Greedy():
     fringe = []
@@ -291,8 +507,8 @@ def main(strategy, filename, param):
 if __name__ == '__main__':   
     if len(sys.argv) < 3:
         # You can modify these values to test your code
-        strategy = 'M'
-        filename = 'example5.txt'
+        strategy = 'B'
+        filename = 'example1.txt'
         param = "3"
     else:
         strategy = sys.argv[1]
